@@ -39,4 +39,5 @@ if __name__ == "__main__":
 #터미널에 cd ~/path/to/your/macro/file을 입력합니다
 #여기서 cd ~가 필수이고 만약 macro파일이 Downloads에 있다면 cd ~/Downloads를 입력해줍니다
 #python3 macro.py를 입력하여 macro파일을 실행해주고 파일이 지시하는 단계에 따릅니다
-#
+
+#즐거운 수강신청 시간을 가집니다
