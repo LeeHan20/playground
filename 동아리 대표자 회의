@@ -1,0 +1,432 @@
+import SwiftUI
+
+// MARK: - 데이터 모델
+
+/// 팀 내 사용자 정보 (프로필)
+struct User: Identifiable, Equatable {
+    let id = UUID()
+    var name: String
+    var school: String
+    var department: String
+    var role: Role
+}
+
+enum Role {
+    case chairman   // 회장
+    case member     // 일반 팀원
+}
+
+/// 회의 참석 여부 기록
+struct AttendanceRecord: Identifiable {
+    let id = UUID()
+    var user: User
+    var isAttending: Bool        // true: 참여, false: 불참
+    var absenceReason: String?   // 불참인 경우 사유 (없으면 빈 문자열)
+}
+
+/// 회의 모델 (회의 생성 시 팀의 모든 구성원에 대한 참석 기록을 초기화)
+struct Meeting: Identifiable {
+    let id = UUID()
+    var title: String
+    var date: Date
+    var attendanceRecords: [AttendanceRecord] = []
+}
+
+/// 팀 모델 (팀 생성 시 고유 초대 코드를 자동 생성)
+struct Team: Identifiable {
+    let id = UUID()
+    var name: String
+    var chairman: User
+    var members: [User]
+    var meetings: [Meeting] = []
+    var invitationCode: String
+}
+
+// MARK: - 메인 화면
+
+struct ContentView: View {
+    // 현재 사용자 프로필 (앱 최초 실행 시 프로필 설정 화면을 띄움)
+    @State private var currentUser = User(name: "", school: "", department: "", role: .member)
+    // 사용자가 생성하거나 참석한 팀 정보
+    @State private var team: Team? = nil
+    // 프로필 설정 화면 표시 여부
+    @State private var isProfileSetupPresented = true
+
+    var body: some View {
+        NavigationView {
+            List {
+                NavigationLink("내 팀") {
+                    if let team = team {
+                        NavigationLink("내 팀") {
+                            TeamHomeView(team: .constant(team), currentUser: currentUser)
+                        }
+                    } else {
+                        NavigationLink("내 팀") {
+                            Text("아직 팀이 없습니다.\n팀 만들기 또는 팀 참석하기를 선택하세요.")
+                                .multilineTextAlignment(.center)
+                                .foregroundColor(.gray)
+                                .padding()
+                        }
+                    }
+                }
+                NavigationLink("팀 만들기") {
+                    CreateTeamView(team: $team, currentUser: $currentUser)
+                }
+                NavigationLink("팀 참석하기") {
+                    JoinTeamView(team: $team, currentUser: currentUser)
+                }
+            }
+            .navigationTitle("메인 메뉴")
+        }
+        .onAppear {
+            // 프로필이 설정되지 않은 경우 프로필 설정 화면을 표시
+            if currentUser.name.isEmpty || currentUser.school.isEmpty || currentUser.department.isEmpty {
+                isProfileSetupPresented = true
+            }
+        }
+        .sheet(isPresented: $isProfileSetupPresented) {
+            ProfileSetupView(currentUser: $currentUser, isPresented: $isProfileSetupPresented)
+        }
+    }
+}
+
+// MARK: - 프로필 설정 화면
+
+struct ProfileSetupView: View {
+    @Binding var currentUser: User
+    @Binding var isPresented: Bool
+    @State private var name: String = ""
+    @State private var school: String = ""
+    @State private var department: String = ""
+    
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("프로필 설정")) {
+                    TextField("이름", text: $name)
+                    TextField("학교", text: $school)
+                    TextField("학과", text: $department)
+                }
+            }
+            .navigationTitle("내 프로필 설정")
+            .navigationBarItems(trailing: Button("저장") {
+                saveProfile()
+            })
+        }
+    }
+    
+    private func saveProfile() {
+        // 모든 필드를 입력한 경우에만 저장
+        guard !name.isEmpty, !school.isEmpty, !department.isEmpty else { return }
+        currentUser.name = name
+        currentUser.school = school
+        currentUser.department = department
+        isPresented = false
+    }
+}
+
+// MARK: - 팀 만들기 화면
+
+struct CreateTeamView: View {
+    @Binding var team: Team?
+    @Binding var currentUser: User
+    @State private var teamName: String = ""
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("새 팀을 만듭니다")
+                .font(.headline)
+            TextField("팀 이름을 입력하세요", text: $teamName)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+            Button("팀 만들기") {
+                createTeam()
+            }
+            .padding()
+            .frame(maxWidth: .infinity)
+            .background(teamName.isEmpty ? Color.gray : Color.green)
+            .foregroundColor(.white)
+            .cornerRadius(8)
+            Spacer()
+        }
+        .padding()
+        .navigationTitle("팀 만들기")
+    }
+    
+    private func createTeam() {
+        guard !teamName.isEmpty else { return }
+        // 팀 생성 시 현재 사용자를 회장으로 지정
+        currentUser.role = .chairman
+        // UUID의 앞 6자리를 초대 코드로 사용 (실제 앱에서는 더 안정적인 방식 필요)
+        let invitationCode = String(UUID().uuidString.prefix(6)).uppercased()
+        let newTeam = Team(name: teamName,
+                           chairman: currentUser,
+                           members: [currentUser],
+                           invitationCode: invitationCode)
+        team = newTeam
+    }
+}
+
+// MARK: - 팀 참석하기 화면
+
+struct JoinTeamView: View {
+    @Binding var team: Team?
+    var currentUser: User
+    @State private var invitationCode: String = ""
+    @State private var joinMessage: String = ""
+    
+    // 예시를 위한 더미 팀 (실제 앱에서는 초대 코드로 데이터베이스에서 팀 조회)
+    var dummyTeam: Team {
+        let dummyChairman = User(name: "Chairman", school: "Dummy University", department: "Dummy Dept", role: .chairman)
+        return Team(name: "Dummy Team", chairman: dummyChairman, members: [dummyChairman], invitationCode: "ABC123")
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("팀 초대 코드를 입력하세요")
+                .font(.headline)
+            TextField("초대 코드", text: $invitationCode)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+            Button("팀 참석하기") {
+                joinTeam()
+            }
+            .padding()
+            .frame(maxWidth: .infinity)
+            .background(invitationCode.isEmpty ? Color.gray : Color.blue)
+            .foregroundColor(.white)
+            .cornerRadius(8)
+            Text(joinMessage)
+                .foregroundColor(.red)
+            Spacer()
+        }
+        .padding()
+        .navigationTitle("팀 참석하기")
+    }
+    
+    private func joinTeam() {
+        if invitationCode.uppercased() == dummyTeam.invitationCode {
+            var updatedTeam = dummyTeam
+            if !updatedTeam.members.contains(where: { $0.id == currentUser.id }) {
+                updatedTeam.members.append(currentUser)
+            }
+            team = updatedTeam
+            joinMessage = "팀에 성공적으로 참석했습니다!"
+        } else {
+            joinMessage = "유효하지 않은 초대 코드입니다."
+        }
+    }
+}
+
+// MARK: - 팀 홈 (내 팀) 화면
+/// 팀에 들어가면 중앙에는 회의 목록을, 오른쪽 상단에는 참여자 보기 아이콘을 배치합니다.
+struct TeamHomeView: View {
+    @Binding var team: Team
+    var currentUser: User
+    @State private var showingAddMeeting = false
+    @State private var showingParticipants = false
+
+    var body: some View {
+        VStack {
+            if team.meetings.isEmpty {
+                Text("아직 회의가 없습니다.")
+                    .foregroundColor(.gray)
+                    .padding()
+                Spacer()
+            } else {
+                List {
+                    ForEach(team.meetings) { meeting in
+                        NavigationLink(destination: MeetingDetailView(meeting: meeting)) {
+                            VStack(alignment: .leading) {
+                                Text(meeting.title)
+                                    .font(.headline)
+                                Text("\(meeting.date, formatter: DateFormatter.shortDate)")
+                                    .font(.subheadline)
+                            }
+                        }
+                    }
+                }
+            }
+            // 회장이면 회의 추가 버튼 노출
+            if currentUser == team.chairman {
+                Button("새로운 회의 추가") {
+                    showingAddMeeting = true
+                }
+                .padding()
+                .background(Color.blue)
+                .foregroundColor(.white)
+                .cornerRadius(8)
+                .padding(.bottom)
+                .sheet(isPresented: $showingAddMeeting) {
+                    AddMeetingView(team: $team)
+                }
+            }
+        }
+        .navigationTitle(team.name)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: {
+                    showingParticipants = true
+                }) {
+                    Image(systemName: "person.3.fill")
+                }
+                .sheet(isPresented: $showingParticipants) {
+                    ParticipantsView(team: team)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - 참여자 보기 화면
+/// 팀의 구성원 목록을 보여주며, 각 구성원을 선택하면 프로필 상세 화면으로 이동합니다.
+struct ParticipantsView: View {
+    var team: Team
+
+    var body: some View {
+        NavigationView {
+            List(team.members) { member in
+                NavigationLink(destination: ProfileDetailView(user: member)) {
+                    HStack {
+                        Image(systemName: "person.circle")
+                            .resizable()
+                            .frame(width: 40, height: 40)
+                        VStack(alignment: .leading) {
+                            Text(member.name)
+                                .font(.headline)
+                            Text(member.school)
+                                .font(.subheadline)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("참여자 목록")
+        }
+    }
+}
+
+// MARK: - 프로필 상세 화면
+struct ProfileDetailView: View {
+    var user: User
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "person.circle")
+                .resizable()
+                .frame(width: 100, height: 100)
+            Text(user.name)
+                .font(.title)
+            Text("학교: \(user.school)")
+            Text("학과: \(user.department)")
+            if user.role == .chairman {
+                Text("역할: 회장")
+                    .foregroundColor(.blue)
+            } else {
+                Text("역할: 팀원")
+                    .foregroundColor(.gray)
+            }
+            Spacer()
+        }
+        .padding()
+        .navigationTitle("프로필")
+    }
+}
+
+// MARK: - 회의 추가 화면
+/// 회의를 추가할 때, 현재 팀 구성원 전체에 대한 참석 기록을 초기화합니다.
+struct AddMeetingView: View {
+    @Binding var team: Team
+    @Environment(\.presentationMode) var presentationMode
+    @State private var meetingTitle: String = ""
+    @State private var meetingDate: Date = Date()
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("회의 정보")) {
+                    TextField("회의 제목", text: $meetingTitle)
+                    DatePicker("회의 날짜", selection: $meetingDate, displayedComponents: [.date, .hourAndMinute])
+                }
+            }
+            .navigationTitle("새 회의 추가")
+            .navigationBarItems(leading: Button("취소") {
+                presentationMode.wrappedValue.dismiss()
+            }, trailing: Button("저장") {
+                addMeeting()
+                presentationMode.wrappedValue.dismiss()
+            })
+        }
+    }
+    
+    private func addMeeting() {
+        guard !meetingTitle.isEmpty else { return }
+        // 팀 구성원마다 기본 참석 기록 (초기값: 불참, 사유는 빈 문자열)
+        let attendanceRecords = team.members.map { member in
+            AttendanceRecord(user: member, isAttending: false, absenceReason: "")
+        }
+        let newMeeting = Meeting(title: meetingTitle, date: meetingDate, attendanceRecords: attendanceRecords)
+        team.meetings.append(newMeeting)
+    }
+}
+
+// MARK: - 회의 상세 화면
+/// 회의의 제목, 날짜와 함께 각 구성원의 참석 여부를 보여줍니다.
+/// 참석 시 "참여"를 초록색, 불참 시 "불참"을 빨간색으로 표시하며, 불참인 경우 사유도 함께 표시합니다.
+struct MeetingDetailView: View {
+    var meeting: Meeting
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text(meeting.title)
+                .font(.title)
+            Text("\(meeting.date, formatter: DateFormatter.shortDate)")
+                .font(.subheadline)
+            Divider()
+            Text("참여 여부")
+                .font(.headline)
+            if meeting.attendanceRecords.isEmpty {
+                Text("참여 정보가 없습니다.")
+                    .foregroundColor(.gray)
+            } else {
+                List(meeting.attendanceRecords) { record in
+                    HStack {
+                        Text(record.user.name)
+                        Spacer()
+                        if record.isAttending {
+                            Text("참여")
+                                .foregroundColor(.green)
+                        } else {
+                            VStack(alignment: .trailing) {
+                                Text("불참")
+                                    .foregroundColor(.red)
+                                if let reason = record.absenceReason, !reason.isEmpty {
+                                    Text(reason)
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer()
+        }
+        .padding()
+        .navigationTitle("회의 상세")
+    }
+}
+
+// MARK: - 날짜 포맷터 헬퍼
+extension DateFormatter {
+    static var shortDate: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+        return formatter
+    }
+}
+
+// MARK: - 미리보기
+struct ContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        ContentView()
+    }
+}
