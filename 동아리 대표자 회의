@@ -21,7 +21,7 @@ struct AttendanceRecord: Identifiable {
     let id = UUID()
     var user: User
     var isAttending: Bool        // true: 참여, false: 불참
-    var absenceReason: String?   // 불참인 경우 사유
+    var absenceReason: String      // 불참인 경우 사유 (기본값: 빈 문자열)
 }
 
 /// 회의 모델 (회의 생성 시 팀 구성원 전체에 대한 참석 기록을 초기화)
@@ -48,13 +48,16 @@ struct ContentView: View {
     @State private var currentUser = User(name: "", school: "", department: "", role: .member)
     // 사용자가 생성하거나 참석한 팀 정보 (없으면 nil)
     @State private var team: Team? = nil
-    // 프로필 설정 화면 표시 여부
+    // 프로필 설정 화면 표시 여부 (최초 실행)
     @State private var isProfileSetupPresented = true
-    
+
     var body: some View {
         NavigationView {
             List {
-                // 단일 NavigationLink로 팀 정보가 있을 때와 없을 때를 구분합니다.
+                NavigationLink("내 프로필") {
+                    MyProfileView(currentUser: $currentUser)
+                }
+                // 내 팀 메뉴 – 팀 정보가 있으면 팀 홈 화면으로, 없으면 안내 메시지 표시
                 NavigationLink(
                     destination: team != nil ?
                         AnyView(TeamHomeView(team: Binding(
@@ -82,7 +85,7 @@ struct ContentView: View {
             .navigationTitle("메인 메뉴")
         }
         .onAppear {
-            // 프로필이 설정되지 않은 경우 프로필 설정 화면을 표시
+            // 프로필 정보가 비어있으면 프로필 설정 화면 표시
             if currentUser.name.isEmpty || currentUser.school.isEmpty || currentUser.department.isEmpty {
                 isProfileSetupPresented = true
             }
@@ -93,7 +96,7 @@ struct ContentView: View {
     }
 }
 
-// MARK: - 프로필 설정 화면
+// MARK: - 프로필 설정 (최초 설정) 화면
 struct ProfileSetupView: View {
     @Binding var currentUser: User
     @Binding var isPresented: Bool
@@ -118,12 +121,89 @@ struct ProfileSetupView: View {
     }
     
     private func saveProfile() {
-        // 모든 필드를 입력한 경우에만 저장
         guard !name.isEmpty, !school.isEmpty, !department.isEmpty else { return }
         currentUser.name = name
         currentUser.school = school
         currentUser.department = department
         isPresented = false
+    }
+}
+
+// MARK: - 내 프로필 화면 (확인 및 수정)
+struct MyProfileView: View {
+    @Binding var currentUser: User
+    @State private var isEditing = false
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "person.circle")
+                .resizable()
+                .frame(width: 100, height: 100)
+            Text(currentUser.name)
+                .font(.title)
+            Text("학교: \(currentUser.school)")
+            Text("학과: \(currentUser.department)")
+            if currentUser.role == .chairman {
+                Text("역할: 회장")
+                    .foregroundColor(.blue)
+            } else {
+                Text("역할: 팀원")
+                    .foregroundColor(.gray)
+            }
+            Button("프로필 수정") {
+                isEditing = true
+            }
+            .padding()
+            .background(Color.blue)
+            .foregroundColor(.white)
+            .cornerRadius(8)
+            Spacer()
+        }
+        .padding()
+        .navigationTitle("내 프로필")
+        .sheet(isPresented: $isEditing) {
+            EditProfileView(currentUser: $currentUser)
+        }
+    }
+}
+
+// 프로필 수정 화면 (기존 값으로 초기화)
+struct EditProfileView: View {
+    @Binding var currentUser: User
+    @Environment(\.presentationMode) var presentationMode
+    @State private var name: String
+    @State private var school: String
+    @State private var department: String
+
+    init(currentUser: Binding<User>) {
+        self._currentUser = currentUser
+        _name = State(initialValue: currentUser.wrappedValue.name)
+        _school = State(initialValue: currentUser.wrappedValue.school)
+        _department = State(initialValue: currentUser.wrappedValue.department)
+    }
+    
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("프로필 수정")) {
+                    TextField("이름", text: $name)
+                    TextField("학교", text: $school)
+                    TextField("학과", text: $department)
+                }
+            }
+            .navigationTitle("프로필 수정")
+            .navigationBarItems(trailing: Button("저장") {
+                saveChanges()
+            })
+        }
+    }
+    
+    private func saveChanges() {
+        guard !name.isEmpty, !school.isEmpty, !department.isEmpty else { return }
+        currentUser.name = name
+        currentUser.school = school
+        currentUser.department = department
+        presentationMode.wrappedValue.dismiss()
     }
 }
 
@@ -155,9 +235,7 @@ struct CreateTeamView: View {
     
     private func createTeam() {
         guard !teamName.isEmpty else { return }
-        // 팀 생성 시 현재 사용자를 회장으로 지정
         currentUser.role = .chairman
-        // UUID 앞 6자리를 초대 코드로 사용 (실제 앱에서는 보다 안정적인 방식 필요)
         let invitationCode = String(UUID().uuidString.prefix(6)).uppercased()
         let newTeam = Team(name: teamName,
                            chairman: currentUser,
@@ -174,8 +252,7 @@ struct JoinTeamView: View {
     @State private var invitationCode: String = ""
     @State private var joinMessage: String = ""
     
-    // 예시를 위한 더미 팀 데이터
-    // 실제 앱에서는 초대 코드를 이용해 서버나 데이터베이스에서 팀 정보를 조회합니다.
+    // 예시용 더미 팀 (실제 앱에서는 초대 코드로 서버/DB에서 팀 조회)
     var dummyTeam: Team {
         let dummyChairman = User(name: "Chairman", school: "Dummy University", department: "Dummy Dept", role: .chairman)
         return Team(name: "Dummy Team", chairman: dummyChairman, members: [dummyChairman], invitationCode: "ABC123")
@@ -204,7 +281,6 @@ struct JoinTeamView: View {
     }
     
     private func joinTeam() {
-        // 예시: 입력한 초대 코드가 dummyTeam과 일치하면 팀에 참석 처리
         if invitationCode.uppercased() == dummyTeam.invitationCode {
             var updatedTeam = dummyTeam
             if !updatedTeam.members.contains(where: { $0.id == currentUser.id }) {
@@ -219,7 +295,7 @@ struct JoinTeamView: View {
 }
 
 // MARK: - 팀 홈 화면 (내 팀)
-/// 팀 화면에 들어가면 중앙에는 회의 목록이 표시되고, 오른쪽 상단의 아이콘을 터치하면 구성원 목록(프로필)을 확인할 수 있습니다.
+/// 팀 화면에 들어가면 중앙에는 회의 목록이 표시되고, 오른쪽 상단의 아이콘을 터치하면 구성원 목록을 확인할 수 있습니다.
 struct TeamHomeView: View {
     @Binding var team: Team
     var currentUser: User
@@ -235,8 +311,9 @@ struct TeamHomeView: View {
                 Spacer()
             } else {
                 List {
-                    ForEach(team.meetings) { meeting in
-                        NavigationLink(destination: MeetingDetailView(meeting: meeting)) {
+                    // 팀 회의 배열을 binding으로 순회하여 MeetingDetailView에 전달합니다.
+                    ForEach($team.meetings) { $meeting in
+                        NavigationLink(destination: MeetingDetailView(meeting: $meeting, currentUser: currentUser)) {
                             VStack(alignment: .leading) {
                                 Text(meeting.title)
                                     .font(.headline)
@@ -247,7 +324,6 @@ struct TeamHomeView: View {
                     }
                 }
             }
-            // 회장인 경우 회의 추가 버튼 노출
             if currentUser == team.chairman {
                 Button("새로운 회의 추가") {
                     showingAddMeeting = true
@@ -279,7 +355,6 @@ struct TeamHomeView: View {
 }
 
 // MARK: - 참여자 보기 화면
-/// 팀 구성원 목록을 확인하며, 각 구성원을 선택하면 프로필 상세 화면으로 이동합니다.
 struct ParticipantsView: View {
     var team: Team
     
@@ -333,7 +408,7 @@ struct ProfileDetailView: View {
 }
 
 // MARK: - 회의 추가 화면
-/// 회의 생성 시, 팀 구성원 전체에 대한 기본 참석 기록을 초기화합니다.
+/// 회의 생성 시, 팀 구성원 전체에 대해 기본 참석 기록을 초기화합니다.
 struct AddMeetingView: View {
     @Binding var team: Team
     @Environment(\.presentationMode) var presentationMode
@@ -360,7 +435,6 @@ struct AddMeetingView: View {
     
     private func addMeeting() {
         guard !meetingTitle.isEmpty else { return }
-        // 팀 구성원 각각에 대해 기본 참석 기록 생성 (초기값: 불참, 사유는 빈 문자열)
         let attendanceRecords = team.members.map { member in
             AttendanceRecord(user: member, isAttending: false, absenceReason: "")
         }
@@ -370,9 +444,11 @@ struct AddMeetingView: View {
 }
 
 // MARK: - 회의 상세 화면
-/// 회의의 제목, 날짜와 함께 각 구성원의 참석 여부(참여: 초록색, 불참: 빨간색 및 불참 사유)를 표시합니다.
+/// 회의의 제목, 날짜와 함께 각 구성원의 참석 여부를 표시합니다.
+/// 본인의 참석 여부 행은 선택 시 수정할 수 있도록 EditAttendanceView로 이동합니다.
 struct MeetingDetailView: View {
-    var meeting: Meeting
+    @Binding var meeting: Meeting
+    var currentUser: User
     
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -387,23 +463,15 @@ struct MeetingDetailView: View {
                 Text("참여 정보가 없습니다.")
                     .foregroundColor(.gray)
             } else {
-                List(meeting.attendanceRecords) { record in
-                    HStack {
-                        Text(record.user.name)
-                        Spacer()
-                        if record.isAttending {
-                            Text("참여")
-                                .foregroundColor(.green)
-                        } else {
-                            VStack(alignment: .trailing) {
-                                Text("불참")
-                                    .foregroundColor(.red)
-                                if let reason = record.absenceReason, !reason.isEmpty {
-                                    Text(reason)
-                                        .font(.caption)
-                                        .foregroundColor(.gray)
-                                }
+                List {
+                    ForEach($meeting.attendanceRecords) { $record in
+                        // 본인의 참석 기록은 수정할 수 있도록 NavigationLink로 감쌉니다.
+                        if record.user.id == currentUser.id {
+                            NavigationLink(destination: EditAttendanceView(record: $record)) {
+                                AttendanceRow(record: record)
                             }
+                        } else {
+                            AttendanceRow(record: record)
                         }
                     }
                 }
@@ -412,6 +480,76 @@ struct MeetingDetailView: View {
         }
         .padding()
         .navigationTitle("회의 상세")
+    }
+}
+
+/// 참석 여부를 표시하는 행 – 불참 사유는 한 줄로 제한
+struct AttendanceRow: View {
+    var record: AttendanceRecord
+    
+    var body: some View {
+        HStack {
+            Text(record.user.name)
+            Spacer()
+            if record.isAttending {
+                Text("참여")
+                    .foregroundColor(.green)
+            } else {
+                VStack(alignment: .trailing) {
+                    Text("불참")
+                        .foregroundColor(.red)
+                    if !record.absenceReason.isEmpty {
+                        Text(record.absenceReason)
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                            .lineLimit(1)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - 참석 기록 수정 화면
+/// 본인의 참석 기록을 수정할 수 있도록 참여 여부(Toggle)와 불참 사유(TextField, 한 줄 제한)를 제공합니다.
+struct EditAttendanceView: View {
+    @Binding var record: AttendanceRecord
+    @Environment(\.presentationMode) var presentationMode
+    @State private var isAttending: Bool
+    @State private var absenceReason: String
+
+    init(record: Binding<AttendanceRecord>) {
+        self._record = record
+        _isAttending = State(initialValue: record.wrappedValue.isAttending)
+        _absenceReason = State(initialValue: record.wrappedValue.absenceReason)
+    }
+    
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("참여 여부")) {
+                    Toggle(isOn: $isAttending) {
+                        Text(isAttending ? "참여" : "불참")
+                    }
+                }
+                if !isAttending {
+                    Section(header: Text("불참 사유 (한 줄 제한)")) {
+                        TextField("불참 사유", text: $absenceReason)
+                            .lineLimit(1)
+                    }
+                }
+            }
+            .navigationTitle("참여 정보 수정")
+            .navigationBarItems(trailing: Button("저장") {
+                saveChanges()
+            })
+        }
+    }
+    
+    private func saveChanges() {
+        record.isAttending = isAttending
+        record.absenceReason = isAttending ? "" : absenceReason
+        presentationMode.wrappedValue.dismiss()
     }
 }
 
