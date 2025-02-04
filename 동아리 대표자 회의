@@ -9,6 +9,7 @@ struct User: Identifiable, Equatable {
     var school: String
     var department: String
     var role: Role
+    var numberOfGroup: Int
 }
 
 enum Role {
@@ -45,7 +46,7 @@ struct Team: Identifiable {
 // MARK: - ContentView
 struct ContentView: View {
     // 현재 사용자 프로필 (앱 최초 실행 시 프로필 설정 화면을 띄움)
-    @State private var currentUser = User(name: "", school: "", department: "", role: .member)
+    @State private var currentUser = User(name: "", school: "", department: "", role: .member, numberOfGroup: 0)
     // 사용자가 생성하거나 참석한 팀 정보 (없으면 nil)
     @State private var team: Team? = nil
     // 프로필 설정 화면 표시 여부 (최초 실행)
@@ -143,13 +144,13 @@ struct MyProfileView: View {
                 .font(.title)
             Text("학교: \(currentUser.school)")
             Text("학과: \(currentUser.department)")
-            if currentUser.role == .chairman {
-                Text("역할: 회장")
-                    .foregroundColor(.blue)
-            } else {
-                Text("역할: 팀원")
-                    .foregroundColor(.gray)
-            }
+//            if currentUser.role == .chairman {
+//                Text("역할: 회장")
+//                    .foregroundColor(.blue)
+//            } else {
+//                Text("역할: 팀원")
+//                    .foregroundColor(.blue)
+//            }
             Button("프로필 수정") {
                 isEditing = true
             }
@@ -564,8 +565,8 @@ extension DateFormatter {
 }
 
 // MARK: - 미리보기
-struct ContentView_Previews: PreviewProvider {
-    static var previews: some View {
-        ContentView()
-    }
-}
+//struct ContentView_Previews: PreviewProvider {
+//    static var previews: some View {
+//        ContentView()
+//    }
+//}
