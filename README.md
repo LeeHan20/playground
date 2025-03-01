@@ -1,3 +1,3 @@
 # projects
 
-collect my minor ideas and simple implmentation
+collect my minor ideas and simple implementation
